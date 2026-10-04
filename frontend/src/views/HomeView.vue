@@ -10,7 +10,6 @@ const panelError = ref('')
 const selectedId = ref(null)
 const panelBusy = ref(false)
 const activeLoftId = ref(null)
-const ghostLoftId = ref(null)
 
 const statusLabel = { raw: '原布', dipping: '浸渍中', cured: '已固化' }
 
@@ -30,10 +29,9 @@ function localNow() {
 const selected = computed(() => rolls.value.find((r) => r.id === selectedId.value) || null)
 
 const rollsByLoft = computed(() => {
-  const ids = new Set()
-  if (activeLoftId.value) ids.add(activeLoftId.value)
-  if (ghostLoftId.value) ids.add(ghostLoftId.value)
-  const shown = lofts.value.filter((l) => ids.size === 0 || ids.has(l.id))
+  const shown = lofts.value.filter(
+    (l) => activeLoftId.value === null || l.id === activeLoftId.value
+  )
   return shown.map((loft) => ({
     loft,
     rolls: rolls.value.filter((r) => r.loftId === loft.id),
@@ -42,7 +40,7 @@ const rollsByLoft = computed(() => {
 
 const selectedDips = computed(() => {
   if (!selected.value) return []
-  return dips.value.filter((d) => d.rollCode === selected.value.rollCode)
+  return dips.value.filter((d) => d.rollId === selected.value.id)
 })
 
 const recentFeed = computed(() => dips.value.slice(0, 12))
@@ -58,15 +56,18 @@ async function load() {
     lofts.value = l.data.results || l.data
     rolls.value = r.data.results || r.data
     dips.value = d.data.results || d.data
-    if (!activeLoftId.value && lofts.value.length) activeLoftId.value = lofts.value[0].id
+    const stillThere = lofts.value.some((l) => l.id === activeLoftId.value)
+    if (!stillThere) activeLoftId.value = lofts.value[0]?.id ?? null
   } catch {
     error.value = '晾晒架加载失败'
   }
 }
 
 function switchLoft(loft) {
-  ghostLoftId.value = activeLoftId.value
+  if (activeLoftId.value === loft.id) return
   activeLoftId.value = loft.id
+  // 换间后别间的卷与面板近次一并消失
+  if (selected.value && selected.value.loftId !== loft.id) closePanel()
 }
 
 function openRoll(roll) {
