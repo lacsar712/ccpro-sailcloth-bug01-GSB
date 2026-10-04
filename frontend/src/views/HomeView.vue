@@ -10,7 +10,6 @@ const panelError = ref('')
 const selectedId = ref(null)
 const panelBusy = ref(false)
 const activeLoftId = ref(null)
-const ghostLoftId = ref(null)
 
 const statusLabel = { raw: '原布', dipping: '浸渍中', cured: '已固化' }
 
@@ -30,10 +29,7 @@ function localNow() {
 const selected = computed(() => rolls.value.find((r) => r.id === selectedId.value) || null)
 
 const rollsByLoft = computed(() => {
-  const ids = new Set()
-  if (activeLoftId.value) ids.add(activeLoftId.value)
-  if (ghostLoftId.value) ids.add(ghostLoftId.value)
-  const shown = lofts.value.filter((l) => ids.size === 0 || ids.has(l.id))
+  const shown = lofts.value.filter((l) => !activeLoftId.value || l.id === activeLoftId.value)
   return shown.map((loft) => ({
     loft,
     rolls: rolls.value.filter((r) => r.loftId === loft.id),
@@ -42,7 +38,7 @@ const rollsByLoft = computed(() => {
 
 const selectedDips = computed(() => {
   if (!selected.value) return []
-  return dips.value.filter((d) => d.rollCode === selected.value.rollCode)
+  return dips.value.filter((d) => d.rollId === selected.value.id)
 })
 
 const recentFeed = computed(() => dips.value.slice(0, 12))
@@ -59,14 +55,29 @@ async function load() {
     rolls.value = r.data.results || r.data
     dips.value = d.data.results || d.data
     if (!activeLoftId.value && lofts.value.length) activeLoftId.value = lofts.value[0].id
+    // 刷新后收口：当前间已不存在则回到第一间；选中卷不属于当前间则关掉面板，
+    // 让间名、挂签行、右侧面板三条始终认同一间。
+    if (activeLoftId.value && !lofts.value.some((x) => x.id === activeLoftId.value)) {
+      activeLoftId.value = lofts.value.length ? lofts.value[0].id : null
+    }
+    if (selectedId.value) {
+      const picked = rolls.value.find((r) => r.id === selectedId.value)
+      if (!picked || picked.loftId !== activeLoftId.value) {
+        selectedId.value = null
+        panelError.value = ''
+      }
+    }
   } catch {
     error.value = '晾晒架加载失败'
   }
 }
 
 function switchLoft(loft) {
-  ghostLoftId.value = activeLoftId.value
+  if (loft.id === activeLoftId.value) return
   activeLoftId.value = loft.id
+  // 别间的卷和它的近次浸渍不得留在面板上
+  selectedId.value = null
+  panelError.value = ''
 }
 
 function openRoll(roll) {
